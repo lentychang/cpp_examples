@@ -72,16 +72,164 @@ inline nanodbc::string convert(std::string const &in)
 
 int main()
 {
-  {
-    std::string connection_string = "Driver=SQLite3;Database=:memory:";
-    nanodbc::connection connection(connection_string);
-    execute(connection, NANODBC_TEXT("drop table rowset_iteration;"));
-    execute(connection, NANODBC_TEXT("create table rowset_iteration (i int);"));
-    nanodbc::execute(connection, NANODBC_TEXT("insert into simple_test values (1, 'one');"));
+  std::string connection_string = "Driver=SQLite3;Database=:memory:";
+  nanodbc::connection connection(connection_string);
+  nanodbc::result results;
+  execute(connection, "create table simple_test (a int, b varchar(10));");
 
-    nanodbc::result results = nanodbc::execute(connection, NANODBC_TEXT("select * from simple_test;"));
-    // show(results);
+  // Direct execution
+  {
+    std::cout << "Section [Direct Execution]";
+    execute(connection, "insert into simple_test values (1, 'one');");
+    execute(connection, "insert into simple_test values (2, 'two');");
+    execute(connection, "insert into simple_test values (3, 'tri');");
+    execute(connection, "insert into simple_test (b) values ('z');");
+    results = execute(connection, "select * from simple_test;");
+    show(results);
   }
+
+  // Accessing results by name, or column number
+  {
+    std::cout << "\nSection [Accessing results by name, or column number]\n";
+    results = execute(
+        connection, "select a as first, b as second from simple_test where a = 1;");
+    results.next();
+    cout << endl
+         << results.get<int>("first") << ", " << results.get<string>(1) << endl;
+  }
+
+  // Binding parameters
+  {
+    std::cout << "\nSection [Binding parameters]";
+    nanodbc::statement statement(connection);
+
+    // Inserting values
+    prepare(statement, "insert into simple_test (a, b) values (?, ?);");
+    const int eight_int = 8;
+    statement.bind(0, &eight_int);
+    const string eight_str = "eight";
+    statement.bind(1, eight_str.c_str());
+    execute(statement);
+
+    // Inserting null values
+    prepare(statement, "insert into simple_test (a, b) values (?, ?);");
+    statement.bind_null(0);
+    statement.bind_null(1);
+    execute(statement);
+
+    // Inserting multiple null values
+    prepare(statement, "insert into simple_test (a, b) values (?, ?);");
+    statement.bind_null(0, 2);
+    statement.bind_null(1, 2);
+    execute(statement, 2);
+
+    prepare(statement, "select * from simple_test;");
+    results = execute(statement);
+    show(results);
+  }
+
+  // Transactions
+  {
+    std::cout << "\nSection [Transactions]";
+    {
+      cout << "\ndeleting all rows ... " << flush;
+      nanodbc::transaction transaction(connection);
+      execute(connection, "delete from simple_test;");
+      // transaction will be rolled back if we don't call transaction.commit()
+    }
+    results = execute(connection, "select count(1) from simple_test;");
+    results.next();
+    cout << "still have " << results.get<int>(0) << " rows!" << endl;
+  }
+
+  // Batch inserting
+  {
+    std::cout << "\nSection [Batch inserting]";
+    nanodbc::statement statement(connection);
+    execute(connection, "drop table if exists batch_test;");
+    execute(connection, "create table batch_test (x varchar(10), y int, z float);");
+    prepare(statement, "insert into batch_test (x, y, z) values (?, ?, ?);");
+
+    const std::size_t elements = 4;
+
+    char xdata[elements][10] = {"this", "is", "a", "test"};
+    statement.bind_strings(0, xdata);
+
+    int ydata[elements] = {1, 2, 3, 4};
+    statement.bind(1, ydata, elements);
+
+    float zdata[elements] = {1.1, 2.2, 3.3, 4.4};
+    statement.bind(2, zdata, elements);
+
+    transact(statement, elements);
+
+    results = execute(connection, "select * from batch_test;", 3);
+    show(results);
+
+    execute(connection, "drop table if exists batch_test;");
+  }
+
+  // Dates and Times
+  {
+    execute(connection, "drop table if exists date_test;");
+    execute(connection, "create table date_test (x datetime);");
+    execute(connection, "insert into date_test values (current_timestamp);");
+
+    results = execute(connection, "select * from date_test;");
+    results.next();
+
+    nanodbc::date date = results.get<nanodbc::date>(0);
+    cout << endl
+         << date.year << "-" << date.month << "-" << date.day << endl;
+
+    results = execute(connection, "select * from date_test;");
+    show(results);
+
+    execute(connection, "drop table if exists date_test;");
+  }
+
+  // Inserting NULL values with a sentry
+  {
+    nanodbc::statement statement(connection);
+    prepare(statement, "insert into simple_test (a, b) values (?, ?);");
+
+    const int elements = 5;
+    const int a_null = 0;
+    const char *b_null = "";
+    int a_data[elements] = {0, 88, 0, 0, 0};
+    char b_data[elements][10] = {"", "non-null", "", "", ""};
+
+    statement.bind(0, a_data, elements, &a_null);
+    statement.bind_strings(1, b_data, b_null);
+
+    execute(statement, elements);
+
+    nanodbc::result results = execute(connection, "select * from simple_test;");
+    show(results);
+  }
+
+  // Inserting NULL values with flags
+  {
+    nanodbc::statement statement(connection);
+    prepare(statement, "insert into simple_test (a, b) values (?, ?);");
+
+    const int elements = 2;
+    int a_data[elements] = {0, 42};
+    char b_data[elements][10] = {"", "every"};
+    bool nulls[elements] = {true, false};
+
+    statement.bind(0, a_data, elements, nulls);
+    statement.bind_strings(1, b_data, nulls);
+
+    execute(statement, elements);
+
+    nanodbc::result results = execute(connection, "select * from simple_test;");
+    show(results);
+  }
+
+  // Cleanup
+  execute(connection, "drop table if exists simple_test;");
+
   return 0;
 }
 
@@ -94,7 +242,7 @@ void show(nanodbc::result &results)
        << "(" << results.rowset_size() << " fetched at a time):" << endl;
 
   // show the column names
-  cout << "row\t";
+  cout << "idx\t";
   for (short i = 0; i < columns; ++i)
     cout << convert(results.column_name(i)) << "\t";
   cout << endl;
@@ -107,7 +255,7 @@ void show(nanodbc::result &results)
     for (short col = 0; col < columns; ++col)
     {
       auto const value = results.get<nanodbc::string>(col, null_value);
-      cout << "(" << convert(value) << ")\t";
+      cout << convert(value) << "\t";
     }
     cout << endl;
   }
