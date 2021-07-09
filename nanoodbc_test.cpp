@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <nanodbc/nanodbc.h>
 #include <string>
 
@@ -70,6 +71,52 @@ inline nanodbc::string convert(std::string const &in)
 }
 #endif
 
+class Buffer
+{
+  char *m_buffer;
+  size_t m_size;
+
+public:
+  Buffer() : m_buffer{nullptr}, m_size{0} {}
+  Buffer(char *raw_buffer, size_t size) : m_buffer{raw_buffer}, m_size{size} {}
+  inline const char *get_buffer() const { return m_buffer; }
+  inline size_t get_size() const { return m_size; }
+  ~Buffer()
+  {
+    // if (m_buffer != nullptr)
+    // {
+    //   delete[] m_buffer;
+    //   m_buffer = nullptr;
+    // }
+  }
+};
+
+Buffer
+fileToBuffer(const std::string &fpath)
+{
+  std::ifstream file(fpath, std::ios::in | std::ios::binary);
+  if (!file)
+  {
+    cerr << "An error occurred opening the file\n";
+    return Buffer{};
+  }
+  file.seekg(0, std::ifstream::end);
+  std::streampos size = file.tellg();
+  file.seekg(0);
+
+  char *buffer = new char[size];
+  file.read(buffer, size);
+  return Buffer{buffer, static_cast<std::size_t>(size)};
+}
+
+void bufferToFile(Buffer buff, const std::string &fpath)
+{
+  auto raw_buff = buff.get_buffer();
+  size_t s = buff.get_size();
+  std::ofstream of{fpath, ios_base::out | ios_base::binary};
+  of.write(raw_buff, s);
+}
+
 int main()
 {
   std::string connection_string = "Driver=SQLite3;Database=:memory:";
@@ -125,6 +172,35 @@ int main()
 
     prepare(statement, "select * from simple_test;");
     results = execute(statement);
+    show(results);
+  }
+
+  // BLOB insertion
+  {
+    std::cout << "\nBLOB insertion";
+    execute(connection, "create table blob_test (a int, b varchar(10), c blob);");
+    nanodbc::statement statement(connection);
+
+    // Inserting values
+    prepare(statement, "insert into blob_test (a, b, c) values (?, ?,?);");
+    const int eight_int = 8;
+    statement.bind(0, &eight_int);
+    const string eight_str = "eight";
+    statement.bind(1, eight_str.c_str());
+
+    const auto buff = fileToBuffer("/home/lenty/pw.txt");
+    statement.bind(2, buff.get_buffer());
+    results = execute(statement);
+    prepare(statement, "select c from blob_test;");
+    results = execute(statement);
+    results.next();
+    auto const blob = results.get<std::vector<std::uint8_t>>(0);
+    std::vector<char> f;
+    for (auto c : blob)
+    {
+      f.push_back(static_cast<char>(c));
+    }
+    bufferToFile(Buffer{f.data(), f.size()}, "/home/lenty/new_pw.txt");
     show(results);
   }
 
