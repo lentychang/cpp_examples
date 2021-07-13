@@ -2,6 +2,7 @@
 #include <fstream>
 #include <nanodbc/nanodbc.h>
 #include <string>
+#include <cstddef>
 
 using namespace std;
 using namespace nanodbc;
@@ -79,7 +80,7 @@ class Buffer
 public:
   Buffer() : m_buffer{nullptr}, m_size{0} {}
   Buffer(char *raw_buffer, size_t size) : m_buffer{raw_buffer}, m_size{size} {}
-  inline const char *get_buffer() const { return m_buffer; }
+  inline char *get_buffer() const { return m_buffer; }
   inline size_t get_size() const { return m_size; }
   ~Buffer()
   {
@@ -176,33 +177,39 @@ int main()
   }
 
   // BLOB insertion
-  {
-    std::cout << "\nBLOB insertion";
-    execute(connection, "create table blob_test (a int, b varchar(10), c blob);");
-    nanodbc::statement statement(connection);
+  // Binary bind is a bug in nanodbc
+  // {
+  //   std::cout << "\nBLOB insertion";
+  //   execute(connection, "create table blob_test (a int, b varchar(10), c blob);");
+  //   nanodbc::statement statement(connection);
 
-    // Inserting values
-    prepare(statement, "insert into blob_test (a, b, c) values (?, ?,?);");
-    const int eight_int = 8;
-    statement.bind(0, &eight_int);
-    const string eight_str = "eight";
-    statement.bind(1, eight_str.c_str());
+  //   // Inserting values
+  //   prepare(statement, "insert into blob_test (a, b, c) values (?, ?, ?);");
+  //   const int eight_int = 8;
+  //   statement.bind(0, &eight_int);
+  //   const string eight_str = "eight";
+  //   statement.bind(1, eight_str.c_str());
 
-    const auto buff = fileToBuffer("/home/lenty/pw.txt");
-    statement.bind(2, buff.get_buffer());
-    results = execute(statement);
-    prepare(statement, "select c from blob_test;");
-    results = execute(statement);
-    results.next();
-    auto const blob = results.get<std::vector<std::uint8_t>>(0);
-    std::vector<char> f;
-    for (auto c : blob)
-    {
-      f.push_back(static_cast<char>(c));
-    }
-    bufferToFile(Buffer{f.data(), f.size()}, "/home/lenty/new_pw.txt");
-    show(results);
-  }
+  //   const auto buff = fileToBuffer("/home/lenty/what.JPG");
+
+  //   uint8_t *s = new uint8_t[buff.get_size()];
+  //   // std::uint8_t* s
+  //   std::vector<uint8_t> t{buff.get_buffer(), buff.get_buffer() + buff.get_size()};
+  //   // statement.bind(2, t.data());
+  //   //
+
+  //   results = execute(statement);
+  //   prepare(statement, "select c from blob_test;");
+  //   results = execute(statement);
+  //   results.next();
+  //   // auto blob = results.get<std::string>(0);
+  //   auto blob = results.get<std::vector<uint8_t>>(0);
+  //   int k = blob.size();
+  //   uint8_t *f = blob.data();
+  //   // bufferToFile(buff, "/home/lenty/new_pic2.jpg");
+  //   bufferToFile(Buffer{reinterpret_cast<char *>(f), blob.size()}, "/home/lenty/new_pic.jpg");
+  //   show(results);
+  // }
 
   // Transactions
   {
