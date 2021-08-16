@@ -19,6 +19,10 @@ add_executable(sqlite3_simple sqlite3_simple.cpp)
 target_include_directories(sqlite3_simple PUBLIC /usr/include)
 target_link_libraries(sqlite3_simple PUBLIC sqlite3)
 
+find_library(MYSQLCONN_LIB mysqlcppconn /usr/lib /usr/lib/x86_64-linux-gnu REQUIRED)
+set(MYSQLCONN_INC /usr/include /usr/include/cppconn/)
+find_package(Boost REQUIRED)
+
 # find_package(nanodbc REQUIRED)
 
 # add_executable(nanoodbc_test nanoodbc_test.cpp)
@@ -28,3 +32,6 @@ target_link_libraries(sqlite3_simple PUBLIC sqlite3)
 add_executable(span span.cpp)
 
 # add_subdirectory(boost_socket)
+
+add_subdirectory(db_abstraction)
+add_subdirectory(template_practice)
