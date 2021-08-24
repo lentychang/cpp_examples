@@ -33,7 +33,6 @@ std::unique_ptr<std::string> istreamToBuffer(std::istream* istrm) {
 }
 
 // TODO Blob Struct to convert char* and istream
-// FIXME Using size template argument will break inheritance of virtaul function
 class Blob : public std::streambuf {
 protected:
     size_t size;
@@ -98,7 +97,8 @@ public:
     virtual int getInt(size_t col_idx) = 0;
     virtual float getFloat(size_t col_idx) = 0;
     virtual double getDouble(size_t col_idx) = 0;
-    virtual const std::string& getString(size_t col_idx) = 0;
+    virtual char const* viewString(size_t col_idx) = 0;
+    virtual std::string getString(size_t col_idx) = 0;
     virtual Blob* getBlob(size_t col_idx) = 0;
     virtual bool getBool(size_t col_idx) = 0;
 
@@ -145,10 +145,13 @@ public:
     double getDouble(size_t col_idx) override {
         return sqlite3_column_double(stmt.get(), col_idx);
     }
-    // TODO Should copy
-    const std::string& getString(size_t col_idx) override {
+    char const* viewString(size_t col_idx) override {
+        return reinterpret_cast<char const*>(sqlite3_column_text(stmt.get(), col_idx));
+    }
+    std::string getString(size_t col_idx) override {
         return std::string(reinterpret_cast<char const*>(sqlite3_column_text(stmt.get(), col_idx)));
     }
+
     // TODO Sqlite getBlob
     // Should return unique_ptr, otherwise might have memory leak
     // This will copy the whole blob!!
@@ -222,7 +225,7 @@ public:
     int getInt(size_t col_idx) override { return resultSet->getInt(col_idx); }
     float getFloat(size_t col_idx) override { return resultSet->getDouble(col_idx); }
     double getDouble(size_t col_idx) override { return resultSet->getDouble(col_idx); }
-    const std::string& getString(size_t col_idx) override { return resultSet->getString(col_idx).asStdString(); }
+    char const* viewString(size_t col_idx) override { return resultSet->getString(col_idx).asStdString(); }
     // std::string getString(size_t col_idx) override {
     //     return std::string(resultSet->getString(col_idx).asStdString());
     // }
